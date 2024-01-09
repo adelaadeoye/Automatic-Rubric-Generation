@@ -9,12 +9,12 @@ pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.vers
 
 function App() {
   const [pdfText, setPdfText] = useState("");
-  const [disableGenerate, setDisableGenerate] = useState(true);
+  const [disableGenerate, setDisableGenerate] = useState(false);
   const [error, setError] = useState("");
   const [rubric, setRubric] = useState("");
   const [processing, setProcessing] = useState(false);
   const [selectedOption, setSelectedOption] = useState("write");
-const [test, setTest] = useState(false);
+  const [test, setTest] = useState(false);
   const handleFileChange = (event) => {
     const file = event.target.files[0];
 
@@ -50,12 +50,51 @@ const [test, setTest] = useState(false);
     }
   };
   useEffect(() => {
-    if(selectedOption!== "write"){
-    const fetchData = async () => {
-      if (pdfText.length > 5000) {
-        setError("Content of file is more than 5000 words");
-      } else if (pdfText.length > 0) {
-        setProcessing(true);
+    if (selectedOption !== "write") {
+      const fetchData = async () => {
+        if (pdfText.length > 5000) {
+          setError("Content of file is more than 5000 words");
+        } else if (pdfText.length > 0) {
+          setProcessing(true);
+          axios.post("http://localhost:3001/ask-question", {
+            model: "v3",
+            content:
+              "I will provide you some information wait until i say 'DONE' before you do any other thing",
+          });
+          const batchSize = 800;
+          for (let i = 0; i < pdfText.length; i += batchSize) {
+            const batch = pdfText.slice(i, i + batchSize).join(" ");
+
+            try {
+              await axios.post("http://localhost:3001/ask-question", {
+                model: "v3",
+                content: batch,
+              });
+            } catch (error) {
+              console.error("Error:", error.message);
+            }
+
+            if (Math.floor(pdfText.length / batchSize) === i / batchSize) {
+              setDisableGenerate(false);
+              setProcessing(false);
+            }
+          }
+        }
+      };
+
+      fetchData();
+    }
+  }, [pdfText]);
+
+  useEffect(() => {
+    if (pdfText.length < 1 && processing === true && error === "")
+      setDisableGenerate(true);
+  }, [error, pdfText.length, processing]);
+
+  const generateRubric = () => {
+    if (selectedOption === "writer") {
+      setDisableGenerate(false);
+      const fetchData = async () => {
         axios.post("http://localhost:3001/ask-question", {
           model: "v3",
           content:
@@ -79,50 +118,10 @@ const [test, setTest] = useState(false);
             setProcessing(false);
           }
         }
-      }
-    };
 
-    fetchData();}
-
-    else{
-      setDisableGenerate(false)
-      const fetchData = async () => {
-          axios.post("http://localhost:3001/ask-question", {
-            model: "gemini",
-            content:
-              "I will provide you some information wait until i say 'DONE' before you do any other thing",
-          });
-          const batchSize = 800;
-          for (let i = 0; i < pdfText.length; i += batchSize) {
-            const batch = pdfText.slice(i, i + batchSize).join(" ");
-  
-            try {
-              await axios.post("http://localhost:3001/ask-question", {
-                model: "gemini",
-                content: batch,
-              });
-            } catch (error) {
-              console.error("Error:", error.message);
-            }
-  
-            if (Math.floor(pdfText.length / batchSize) === i / batchSize) {
-              setDisableGenerate(false);
-              setProcessing(false);
-            }
-          
-        }
       };
-  
       fetchData();
     }
-  }, [pdfText]);
-
-  useEffect(() => {
-    if (pdfText.length < 1 && processing === true && error === "")
-      setDisableGenerate(true);
-  }, [error, pdfText.length, processing]);
-
-  const generateRubric = () => {
     setProcessing(true);
     setDisableGenerate(true);
     axios
@@ -141,6 +140,9 @@ const [test, setTest] = useState(false);
 
   const handleOptionChange = (event) => {
     setSelectedOption(event.target.value);
+    if(event.target.value!=='write'){
+setDisableGenerate(true);
+    }
   };
   const [text, setText] = useState("");
   const maxWords = 5000;
@@ -153,65 +155,69 @@ const [test, setTest] = useState(false);
     // Update the state only if the word count is within the limit
     if (wordCount <= maxWords) {
       setText(enteredText);
-      setPdfText(enteredText.split(' '));
+      setPdfText(enteredText.split(" "));
     }
   };
 
   return (
     <div className="App">
-     {/* {test?<TestRubric generatedRubric={rubric}/>: */}
-     <>
-     <div style={{ marginTop: 20 }}>
-        <label>
-          <input
-            type="radio"
-            value="write"
-            checked={selectedOption === "write"}
-            onChange={handleOptionChange}
-          />
-          Write description or topic of interest or
-        </label>
+      {/* {test?<TestRubric generatedRubric={rubric}/>: */}
+      <>
+        <div style={{ marginTop: 20 }}>
+          <label>
+            <input
+              type="radio"
+              value="write"
+              checked={selectedOption === "write"}
+              onChange={handleOptionChange}
+            />
+            Write description or topic of interest or
+          </label>
 
-        <label>
-          <input
-            type="radio"
-            value="file"
-            checked={selectedOption === "file"}
-            onChange={handleOptionChange}
-          />
-          Upload a pdf file
-        </label>
-      </div>
-      {selectedOption === "write" ? (
-        <>
-          <textarea
-            value={text}
-            onChange={handleTextChange}
-            placeholder="Type your text here..."
-            style={{ width: "80%", minHeight: "100px" }}
-          />
+          <label>
+            <input
+              type="radio"
+              value="file"
+              checked={selectedOption === "file"}
+              onChange={handleOptionChange}
+            />
+            Upload a pdf file
+          </label>
+        </div>
+        {selectedOption === "write" ? (
+          <>
+            <textarea
+              value={text}
+              onChange={handleTextChange}
+              placeholder="Type your text here..."
+              style={{ width: "80%", minHeight: "100px" }}
+            />
 
-          <p>
-            Word Count: {text.trim().split(/\s+/).length}/{maxWords}
-          </p>
-        </>
-      ) : (
-        <input type="file" accept=".pdf" onChange={handleFileChange} />
-      )}
+            <p>
+              Word Count: {text.trim().split(/\s+/).length}/{maxWords}
+            </p>
+          </>
+        ) : (
+          <input type="file" accept=".pdf" onChange={handleFileChange} />
+        )}
 
-      <p style={{ color: "red", fontSize: 12 }}>{error}</p>
-      {processing && <p>processing...</p>}
-      <div style={{display:'flex',flexDirection:'row'}}>
-      <button disabled={disableGenerate} onClick={generateRubric} style={{margin:20}}>
-        Generate Rubric
-      </button>
-      {/* <button disabled={disableGenerate} onClick={()=>setTest(true)} style={{margin:20}}>
+        <p style={{ color: "red", fontSize: 12 }}>{error}</p>
+        {processing && <p>processing...</p>}
+        <div style={{ display: "flex", flexDirection: "row" }}>
+          <button
+            disabled={disableGenerate}
+            onClick={generateRubric}
+            style={{ margin: 20 }}
+          >
+            Generate Rubric
+          </button>
+          {/* <button disabled={disableGenerate} onClick={()=>setTest(true)} style={{margin:20}}>
         Test Rubric
       </button> */}
-      </div>
-      <ReactMarkdown>{rubric}</ReactMarkdown></>
+        </div>
+        <ReactMarkdown>{rubric}</ReactMarkdown>
+      </>
       {/* } */}
-     
     </div>
   );
 }
